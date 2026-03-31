@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-03-31
+
+### Fixed
+
+- **ENOENT workspace error**: Fixed "Error: ENOENT: no such file or directory, mkdir '/home/node/.openclaw/workspace'" by using persistent volume instead of read-only ConfigMap mount
+- **EROFS errors**: Resolved "read-only file system" errors when OpenClaw tried to write exec-approvals.json and other files
+- Added initContainer to copy openclaw.json from ConfigMap to /data/.openclaw/ on startup
+- Set HOME=/data environment variable to use writable persistent volume
+- Configuration and device pairings now persist correctly across pod restarts
+
 ## [1.0.0] - 2026-03-31
 
 ### 🎉 Initial Release
