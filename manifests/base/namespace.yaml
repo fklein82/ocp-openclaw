@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    openshift.io/description: "OpenClaw AI Agent Platform"
+    openshift.io/display-name: "OpenClaw"

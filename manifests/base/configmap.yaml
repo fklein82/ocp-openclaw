@@ -1,0 +1,35 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-config
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+data:
+  # OpenClaw Gateway Configuration
+  OPENCLAW_GATEWAY_PORT: "18789"
+  OPENCLAW_GATEWAY_BIND: "0.0.0.0"
+
+  # Sandbox mode - recommended for security
+  OPENCLAW_SANDBOX: "1"
+
+  # State directory for persistent data
+  OPENCLAW_STATE_DIR: "/data"
+
+  # Logging configuration
+  LOG_LEVEL: "info"
+
+  # Health check configuration
+  HEALTHCHECK_ENABLED: "true"
+  HEALTHCHECK_PATH: "/healthz"
+  READINESS_PATH: "/readyz"
+
+  # CORS - Allowed origins for Control UI
+  # OpenClaw uses dotted notation for nested config
+  # Try multiple possible variable names
+  OPENCLAW_GATEWAY_CONTROLUI_ALLOWEDORIGINS: "https://openclaw-openclaw.apps.rosa.h7865-k2q99-26s.qpi4.p3.openshiftapps.com,http://localhost:18789,http://127.0.0.1:18789"
+
+  # Also configure trusted proxies (for nginx sidecar)
+  OPENCLAW_GATEWAY_TRUSTEDPROXIES: "127.0.0.1,::1,10.0.0.0/8"

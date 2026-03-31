@@ -1,0 +1,94 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Production overlay - hardened security, resource guarantees, monitoring
+
+bases:
+- ../base
+
+namePrefix: ""
+nameSuffix: ""
+
+# Production labels
+commonLabels:
+  environment: production
+  deployment-type: production
+
+# Production annotations
+commonAnnotations:
+  environment: "production"
+  managed-by: "openclaw-deployment-production"
+
+# Patches for production
+patchesStrategicMerge:
+- |-
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: openclaw
+    namespace: openclaw
+    annotations:
+      # Enable auto-restart on config changes
+      configmap.reloader.stakater.com/reload: "openclaw-config"
+      secret.reloader.stakater.com/reload: "openclaw-secrets"
+  spec:
+    replicas: 1
+    template:
+      metadata:
+        annotations:
+          # Production monitoring
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "18789"
+          prometheus.io/path: "/metrics"
+      spec:
+        containers:
+        - name: openclaw
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2000m"
+            limits:
+              memory: "16Gi"
+              cpu: "8000m"
+- |-
+  apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: openclaw-data
+    namespace: openclaw
+  spec:
+    resources:
+      requests:
+        storage: 100Gi
+- |-
+  apiVersion: route.openshift.io/v1
+  kind: Route
+  metadata:
+    name: openclaw
+    namespace: openclaw
+    annotations:
+      # Production route settings
+      haproxy.router.openshift.io/timeout: "600s"
+      haproxy.router.openshift.io/rate-limit-connections: "true"
+      haproxy.router.openshift.io/rate-limit-connections.concurrent-tcp: "100"
+  spec:
+    # Set custom hostname in production
+    # host: openclaw.apps.production.example.com
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+
+# Production ConfigMap overrides
+configMapGenerator:
+- name: openclaw-config
+  namespace: openclaw
+  behavior: merge
+  literals:
+  - LOG_LEVEL=info
+  - OPENCLAW_SANDBOX=1
+
+# Pin to specific stable version in production
+images:
+- name: ghcr.io/openclaw/openclaw
+  newTag: "2026.3.7"

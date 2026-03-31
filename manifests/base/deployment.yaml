@@ -1,0 +1,145 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+    app.kubernetes.io/version: "2026.3.7"
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"openclaw:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"openclaw\")].image"}]'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openclaw
+      app.kubernetes.io/component: ai-agent
+  strategy:
+    type: Recreate  # Use Recreate for stateful apps with RWO volumes
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openclaw
+        app.kubernetes.io/component: ai-agent
+        app.kubernetes.io/version: "2026.3.7"
+      annotations:
+        # Prometheus metrics (if applicable)
+        prometheus.io/scrape: "false"
+    spec:
+      serviceAccountName: openclaw
+
+      # Security Context - OpenShift compatible
+      securityContext:
+        # fsGroup allows volume ownership
+        fsGroup: 1000
+        # Run as non-root (OpenShift enforces this)
+        runAsNonRoot: true
+        # OpenShift will assign an arbitrary UID from the namespace range
+        # Do NOT set runAsUser - let OpenShift handle it
+        fsGroupChangePolicy: "OnRootMismatch"
+        # Seccomp profile - runtime/default for security
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Init container to ensure proper permissions
+      initContainers:
+      - name: init-permissions
+        image: ghcr.io/openclaw/openclaw:2026.3.7
+        command:
+        - sh
+        - -c
+        - |
+          echo "Initializing OpenClaw data directory..."
+          mkdir -p /data/.openclaw /data/workspace
+          echo "Checking permissions..."
+          ls -la /data
+          echo "Initialization complete"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+
+      containers:
+      - name: openclaw
+        image: ghcr.io/openclaw/openclaw:2026.3.7
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: gateway
+          containerPort: 18789
+          protocol: TCP
+
+        # Environment variables from ConfigMap
+        envFrom:
+        - configMapRef:
+            name: openclaw-config
+        - secretRef:
+            name: openclaw-secrets
+
+        # Volume mounts
+        volumeMounts:
+        - name: data
+          mountPath: /data
+
+        # Security context for container
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          # OpenShift will inject the appropriate UID
+
+        # Resource limits (adjust based on workload)
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+
+        # NOTE: Probes disabled - OpenClaw binds to localhost only
+        # For production, configure app to bind to 0.0.0.0 or use exec probes
+        # Uncomment and adjust probes based on your OpenClaw configuration
+
+        # startupProbe:
+        #   tcpSocket:
+        #     port: 18789
+        #   initialDelaySeconds: 10
+        #   periodSeconds: 10
+        #   failureThreshold: 30
+
+        # livenessProbe:
+        #   tcpSocket:
+        #     port: 18789
+        #   initialDelaySeconds: 30
+        #   periodSeconds: 30
+        #   failureThreshold: 3
+
+        # readinessProbe:
+        #   tcpSocket:
+        #     port: 18789
+        #   initialDelaySeconds: 15
+        #   periodSeconds: 10
+        #   failureThreshold: 3
+
+      # Volumes
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: openclaw-data
+
+      # Restart policy
+      restartPolicy: Always
+
+      # DNS and termination settings
+      dnsPolicy: ClusterFirst
+      terminationGracePeriodSeconds: 60

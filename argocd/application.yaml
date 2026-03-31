@@ -1,0 +1,191 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openclaw
+  namespace: openshift-gitops
+  # Alternatively, use 'argocd' namespace if that's where Argo CD is installed
+  # namespace: argocd
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project
+  project: default
+
+  # Source repository
+  source:
+    repoURL: https://github.com/your-org/ocp-openclaw.git
+    targetRevision: main  # Or specific tag/branch
+    path: manifests/production  # Change to 'manifests/lab' for lab environment
+
+    # Kustomize configuration
+    kustomize:
+      version: v5.0.0
+      # Optional: Override image tag
+      # images:
+      # - ghcr.io/openclaw/openclaw:2026.4.1
+
+  # Destination cluster and namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openclaw
+
+  # Sync policy
+  syncPolicy:
+    # Automated sync (optional - disable for manual approval)
+    automated:
+      prune: true        # Delete resources not in Git
+      selfHeal: true     # Sync when cluster state deviates from Git
+      allowEmpty: false  # Don't sync if repo is empty
+
+    # Sync options
+    syncOptions:
+    - CreateNamespace=true       # Auto-create namespace if it doesn't exist
+    - PrunePropagationPolicy=foreground  # Wait for resources to be deleted
+    - PruneLast=true             # Prune as last step
+    - RespectIgnoreDifferences=true
+
+    # Retry configuration
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Ignore differences (for auto-generated fields)
+  ignoreDifferences:
+  - group: route.openshift.io
+    kind: Route
+    jsonPointers:
+    - /status
+    - /spec/host  # OpenShift may auto-generate host
+
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas  # Ignore if using HPA
+
+  # Health assessment
+  health:
+    status: Healthy
+    message: ""
+
+---
+# Optional: AppProject for organizing applications
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: openclaw-project
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: openclaw
+spec:
+  description: OpenClaw AI Agent Project
+
+  # Source repos
+  sourceRepos:
+  - https://github.com/your-org/ocp-openclaw.git
+
+  # Destinations
+  destinations:
+  - namespace: openclaw
+    server: https://kubernetes.default.svc
+  - namespace: openclaw-*
+    server: https://kubernetes.default.svc
+
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: security.openshift.io
+    kind: SecurityContextConstraints
+  - group: rbac.authorization.k8s.io
+    kind: ClusterRole
+  - group: rbac.authorization.k8s.io
+    kind: ClusterRoleBinding
+
+  # Namespace resource whitelist (empty = allow all)
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+
+  # Orphaned resources handling
+  orphanedResources:
+    warn: true
+
+---
+# Example: ApplicationSet for multi-environment deployment
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: openclaw-environments
+  namespace: openshift-gitops
+spec:
+  generators:
+  # List generator for environments
+  - list:
+      elements:
+      - environment: lab
+        namespace: openclaw-lab
+        targetRevision: main
+      - environment: production
+        namespace: openclaw-prod
+        targetRevision: v1.0.0  # Use tagged release for production
+
+  template:
+    metadata:
+      name: 'openclaw-{{environment}}'
+      labels:
+        environment: '{{environment}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+    spec:
+      project: openclaw-project
+
+      source:
+        repoURL: https://github.com/your-org/ocp-openclaw.git
+        targetRevision: '{{targetRevision}}'
+        path: 'manifests/{{environment}}'
+        kustomize:
+          version: v5.0.0
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+
+      ignoreDifferences:
+      - group: route.openshift.io
+        kind: Route
+        jsonPointers:
+        - /spec/host
+
+---
+# NOTE: Before applying, update:
+# 1. repoURL to your actual Git repository
+# 2. targetRevision to your branch/tag
+# 3. namespace if Argo CD is not in 'openshift-gitops'
+# 4. Any environment-specific values
+
+# To deploy:
+# oc apply -f argocd/application.yaml
+
+# To sync manually:
+# argocd app sync openclaw
+
+# To view status:
+# argocd app get openclaw
+# oc get application openclaw -n openshift-gitops

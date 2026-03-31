@@ -1,0 +1,58 @@
+---
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: openclaw-scc
+  annotations:
+    kubernetes.io/description: "Custom SCC for OpenClaw - allows fsGroup for persistent storage"
+    include.release.openshift.io/self-managed-high-availability: "true"
+# Allow running as any non-root user (OpenShift assigns arbitrary UIDs)
+runAsUser:
+  type: MustRunAsRange
+  uidRangeMin: 1000
+  uidRangeMax: 65535
+# Allow fsGroup for volume ownership
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 1000
+    max: 65535
+# Allow supplemental groups
+supplementalGroups:
+  type: RunAsAny
+# SELinux context
+seLinuxContext:
+  type: MustRunAs
+# Seccomp profiles - allow runtime/default
+seccompProfiles:
+- runtime/default
+- localhost/*
+# Capabilities - drop all, add minimal required
+allowedCapabilities: []
+defaultAddCapabilities: []
+requiredDropCapabilities:
+- ALL
+# Privilege settings
+allowPrivilegedContainer: false
+allowPrivilegeEscalation: false
+# Volume types allowed
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
+# Read-only root filesystem recommended for security
+readOnlyRootFilesystem: false
+# No host access
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+# Users and service accounts that can use this SCC
+users: []
+groups: []
+# Priority (lower = higher priority)
+priority: 10

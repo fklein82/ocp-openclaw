@@ -1,0 +1,190 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+    app.kubernetes.io/version: "2026.3.7"
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"openclaw:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"openclaw\")].image"}]'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openclaw
+      app.kubernetes.io/component: ai-agent
+  strategy:
+    type: Recreate  # Use Recreate for stateful apps with RWO volumes
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openclaw
+        app.kubernetes.io/component: ai-agent
+        app.kubernetes.io/version: "2026.3.7"
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      serviceAccountName: openclaw
+
+      # Security Context - OpenShift compatible
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        fsGroupChangePolicy: "OnRootMismatch"
+        # Seccomp profile - runtime/default for security
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Init container to ensure proper permissions
+      initContainers:
+      - name: init-permissions
+        image: ghcr.io/openclaw/openclaw:2026.3.7
+        command:
+        - sh
+        - -c
+        - |
+          echo "Initializing OpenClaw data directory..."
+          mkdir -p /data/.openclaw /data/workspace
+          echo "Checking permissions..."
+          ls -la /data
+          echo "Initialization complete"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+
+      containers:
+      # Main OpenClaw container
+      - name: openclaw
+        image: ghcr.io/openclaw/openclaw:2026.3.7
+        imagePullPolicy: IfNotPresent
+
+        # Note: Container port for localhost only (not exposed externally)
+        ports:
+        - name: gateway-local
+          containerPort: 18789
+          protocol: TCP
+
+        # Environment variables from ConfigMap
+        envFrom:
+        - configMapRef:
+            name: openclaw-config
+        - secretRef:
+            name: openclaw-secrets
+
+        # Volume mounts
+        volumeMounts:
+        - name: data
+          mountPath: /data
+
+        # Security context for container
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+
+        # Resource limits (adjust based on workload)
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+
+        # NOTE: Probes removed - nginx sidecar will handle health checks
+
+      # Nginx reverse proxy sidecar
+      - name: nginx-proxy
+        image: nginxinc/nginx-unprivileged:1.25-alpine
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: gateway
+          containerPort: 8080
+          protocol: TCP
+
+        # Volume mounts for nginx config
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
+        - name: nginx-cache
+          mountPath: /tmp
+
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 101  # nginx user in unprivileged image
+
+        # Resource limits for nginx (minimal)
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+        # Startup probe - nginx starts quickly
+        startupProbe:
+          httpGet:
+            path: /nginx-health
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          failureThreshold: 6
+
+        # Liveness probe
+        livenessProbe:
+          httpGet:
+            path: /nginx-health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          failureThreshold: 3
+
+        # Readiness probe - checks nginx is ready
+        readinessProbe:
+          httpGet:
+            path: /nginx-health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+
+      # Volumes
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: openclaw-data
+      - name: nginx-config
+        configMap:
+          name: nginx-proxy-config
+          items:
+          - key: nginx.conf
+            path: nginx.conf
+      - name: nginx-cache
+        emptyDir: {}
+
+      # Restart policy
+      restartPolicy: Always
+
+      # DNS and termination settings
+      dnsPolicy: ClusterFirst
+      terminationGracePeriodSeconds: 60

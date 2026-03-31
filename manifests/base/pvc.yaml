@@ -1,0 +1,21 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openclaw-data
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+  annotations:
+    description: "Persistent storage for OpenClaw workspace and configuration"
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      # Minimum 40GB recommended, 80GB for production
+      storage: 40Gi
+  # StorageClass will be set via Kustomize overlay or use cluster default
+  # storageClassName: gp3-csi
+  volumeMode: Filesystem

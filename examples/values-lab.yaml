@@ -1,0 +1,116 @@
+# OpenClaw Lab Environment Configuration Example
+# This is a reference for the Kustomize patches applied in manifests/lab/
+
+---
+# Environment
+environment: lab
+
+# Image Configuration
+image:
+  repository: ghcr.io/openclaw/openclaw
+  tag: latest  # Use latest for lab (faster iteration)
+  pullPolicy: Always  # Always pull latest in lab
+
+# Resource Configuration (Lower for lab)
+resources:
+  requests:
+    memory: 1Gi
+    cpu: 500m
+  limits:
+    memory: 4Gi
+    cpu: 2000m
+
+# Storage Configuration
+storage:
+  size: 20Gi
+  storageClass: ""  # Use cluster default
+  accessMode: ReadWriteOnce
+
+# Application Configuration
+config:
+  # Gateway Configuration
+  gatewayPort: 18789
+  gatewayBind: "0.0.0.0"
+
+  # Sandbox mode (disabled in lab for faster execution)
+  sandbox: false
+
+  # Logging
+  logLevel: debug  # Verbose logging in lab
+
+  # Health check
+  healthCheckEnabled: true
+  healthCheckPath: /healthz
+  readinessPath: /readyz
+
+# Route Configuration
+route:
+  # Let OpenShift auto-generate hostname
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+# Probes Configuration
+probes:
+  startup:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    failureThreshold: 30  # 5 minutes
+  liveness:
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    failureThreshold: 3
+
+# Security Configuration
+security:
+  # Service Account
+  serviceAccountName: openclaw
+
+  # SCC (Security Context Constraints)
+  scc:
+    name: openclaw-scc
+    runAsUser:
+      min: 1000
+      max: 65535
+    fsGroup:
+      min: 1000
+      max: 65535
+
+  # Pod Security Context
+  podSecurityContext:
+    fsGroup: 1000
+    runAsNonRoot: true
+    fsGroupChangePolicy: OnRootMismatch
+
+  # Container Security Context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    capabilities:
+      drop:
+      - ALL
+
+# Deployment Strategy
+deployment:
+  replicas: 1
+  strategy: Recreate  # For RWO volumes
+
+# Notes
+notes: |
+  Lab Environment Configuration
+
+  This configuration is optimized for:
+  - Fast iteration and development
+  - Lower resource consumption
+  - Debug logging
+  - Latest image tags
+
+  NOT suitable for production use.
+
+  To deploy:
+    oc apply -k manifests/lab

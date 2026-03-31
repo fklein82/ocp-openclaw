@@ -1,0 +1,67 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Lab/Development overlay - minimal resources, faster deployment
+
+bases:
+- ../base
+
+namePrefix: ""
+nameSuffix: ""
+
+# Lab-specific labels
+commonLabels:
+  environment: lab
+  deployment-type: development
+
+# Lab-specific annotations
+commonAnnotations:
+  environment: "lab"
+  managed-by: "openclaw-deployment-lab"
+
+# Patch resources for lab environment
+patchesStrategicMerge:
+- |-
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: openclaw
+    namespace: openclaw
+  spec:
+    replicas: 1
+    template:
+      spec:
+        containers:
+        - name: openclaw
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+- |-
+  apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: openclaw-data
+    namespace: openclaw
+  spec:
+    resources:
+      requests:
+        storage: 20Gi
+
+# ConfigMap overrides for lab
+configMapGenerator:
+- name: openclaw-config
+  namespace: openclaw
+  behavior: merge
+  literals:
+  - LOG_LEVEL=debug
+  - OPENCLAW_SANDBOX=0
+
+# Use latest image in lab
+images:
+- name: ghcr.io/openclaw/openclaw
+  newTag: latest

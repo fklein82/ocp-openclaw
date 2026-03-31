@@ -1,0 +1,68 @@
+# Claude Code memory and project files
+.claude/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Secrets and credentials
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# OpenShift/Kubernetes local configs
+kubeconfig
+*.kubeconfig
+.kube/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+
+# IDE and editor files
+.vscode/
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+
+# Build artifacts
+*.log
+logs/
+tmp/
+temp/
+
+# Kustomize build output
+kustomization-build.yaml
+
+# Helm charts (if generated)
+charts/*.tgz
+requirements.lock
+
+# Testing and validation
+test-results/
+coverage/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

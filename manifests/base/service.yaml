@@ -1,0 +1,25 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+  annotations:
+    description: "OpenClaw Gateway Service"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+  ports:
+  - name: gateway
+    port: 18789
+    targetPort: gateway
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600

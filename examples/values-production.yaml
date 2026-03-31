@@ -1,0 +1,154 @@
+# OpenClaw Production Environment Configuration Example
+# This is a reference for the Kustomize patches applied in manifests/production/
+
+---
+# Environment
+environment: production
+
+# Image Configuration
+image:
+  repository: ghcr.io/openclaw/openclaw
+  tag: "2026.3.7"  # Pin to specific stable version
+  pullPolicy: IfNotPresent  # Don't pull if already present
+
+# Resource Configuration (Higher for production)
+resources:
+  requests:
+    memory: 4Gi
+    cpu: 2000m
+  limits:
+    memory: 16Gi
+    cpu: 8000m
+
+# Storage Configuration
+storage:
+  size: 100Gi
+  storageClass: ""  # Specify if not using default (e.g., gp3-csi)
+  accessMode: ReadWriteOnce
+
+# Application Configuration
+config:
+  # Gateway Configuration
+  gatewayPort: 18789
+  gatewayBind: "0.0.0.0"
+
+  # Sandbox mode (enabled in production for security)
+  sandbox: true
+
+  # Logging
+  logLevel: info  # Standard logging in production
+
+  # Health check
+  healthCheckEnabled: true
+  healthCheckPath: /healthz
+  readinessPath: /readyz
+
+# Route Configuration
+route:
+  # Set custom hostname for production
+  # host: "openclaw.apps.production.example.com"
+  host: ""  # Leave empty to auto-generate
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+    # Optionally add custom certificate
+    # certificate: |
+    #   -----BEGIN CERTIFICATE-----
+    #   ...
+    #   -----END CERTIFICATE-----
+    # key: |
+    #   -----BEGIN PRIVATE KEY-----
+    #   ...
+    #   -----END PRIVATE KEY-----
+
+# Probes Configuration
+probes:
+  startup:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    failureThreshold: 30  # 5 minutes
+  liveness:
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    failureThreshold: 3
+
+# Security Configuration
+security:
+  # Service Account
+  serviceAccountName: openclaw
+
+  # SCC (Security Context Constraints)
+  scc:
+    name: openclaw-scc
+    runAsUser:
+      min: 1000
+      max: 65535
+    fsGroup:
+      min: 1000
+      max: 65535
+
+  # Pod Security Context
+  podSecurityContext:
+    fsGroup: 1000
+    runAsNonRoot: true
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Container Security Context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    capabilities:
+      drop:
+      - ALL
+
+# Deployment Strategy
+deployment:
+  replicas: 1
+  strategy: Recreate  # For RWO volumes
+  # For high availability, consider:
+  # - Using StatefulSet
+  # - ReadWriteMany storage
+  # - Session affinity
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  prometheus:
+    scrape: true
+    port: 18789
+    path: /metrics
+
+# Backup Configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: 7  # Keep 7 days of backups
+
+# Notes
+notes: |
+  Production Environment Configuration
+
+  This configuration is optimized for:
+  - Stability and reliability
+  - Security hardening
+  - Resource guarantees
+  - Monitoring and observability
+
+  Production Checklist:
+  - [ ] Update secrets with real API keys (./scripts/create-secrets.sh)
+  - [ ] Set custom route hostname (if required)
+  - [ ] Configure TLS certificates (if custom domain)
+  - [ ] Set appropriate resource limits based on workload
+  - [ ] Configure backup schedule
+  - [ ] Set up monitoring and alerting
+  - [ ] Review security settings
+  - [ ] Test disaster recovery procedures
+
+  To deploy:
+    oc apply -k manifests/production

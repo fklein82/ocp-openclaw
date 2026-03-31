@@ -1,0 +1,71 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openclaw-role
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+rules:
+# Allow reading configmaps and secrets for configuration
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+# Allow reading service account token
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get"]
+# Allow pod self-inspection
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openclaw-rolebinding
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/component: ai-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openclaw-role
+subjects:
+- kind: ServiceAccount
+  name: openclaw
+  namespace: openclaw
+---
+# Binding to allow using the custom SCC
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openclaw-scc-user
+  labels:
+    app.kubernetes.io/name: openclaw
+rules:
+- apiGroups:
+  - security.openshift.io
+  resourceNames:
+  - openclaw-scc
+  resources:
+  - securitycontextconstraints
+  verbs:
+  - use
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openclaw-scc-binding
+  labels:
+    app.kubernetes.io/name: openclaw
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openclaw-scc-user
+subjects:
+- kind: ServiceAccount
+  name: openclaw
+  namespace: openclaw
