@@ -1,0 +1,184 @@
+name: Validate Manifests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  validate-manifests:
+    runs-on: ubuntu-latest
+    name: Validate Kubernetes Manifests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: "5.3.0"
+
+      - name: Validate base manifests
+        run: |
+          echo "🔍 Validating base manifests..."
+          kustomize build manifests/base > /tmp/base.yaml
+          echo "✅ Base manifests are valid"
+
+      - name: Validate lab overlay
+        run: |
+          echo "🔍 Validating lab overlay..."
+          kustomize build manifests/lab > /tmp/lab.yaml
+          echo "✅ Lab overlay is valid"
+
+      - name: Validate production overlay
+        run: |
+          echo "🔍 Validating production overlay..."
+          kustomize build manifests/production > /tmp/production.yaml
+          echo "✅ Production overlay is valid"
+
+      - name: Validate sidecar overlay
+        run: |
+          echo "🔍 Validating sidecar overlay..."
+          kustomize build manifests/sidecar > /tmp/sidecar.yaml
+          echo "✅ Sidecar overlay is valid"
+
+      - name: Check for secrets in manifests
+        run: |
+          echo "🔍 Checking for exposed secrets..."
+          if grep -r "CHANGE_ME_IN_PRODUCTION" manifests/ --exclude-dir=.git; then
+            echo "⚠️  Found placeholder secrets (this is OK for templates)"
+          fi
+          if grep -r -E "sk-[a-zA-Z0-9]{48}" manifests/ --exclude-dir=.git; then
+            echo "❌ Found potential real API keys in manifests!"
+            exit 1
+          fi
+          echo "✅ No real secrets found in manifests"
+
+      - name: Validate YAML syntax
+        run: |
+          echo "🔍 Validating YAML syntax..."
+          find manifests/ -name "*.yaml" -o -name "*.yml" | while read file; do
+            echo "Checking $file..."
+            python3 -c "import yaml; yaml.safe_load(open('$file'))" || exit 1
+          done
+          echo "✅ All YAML files are valid"
+
+  validate-scripts:
+    runs-on: ubuntu-latest
+    name: Validate Shell Scripts
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: |
+          echo "🔍 Running ShellCheck on all scripts..."
+          find scripts/ -name "*.sh" | while read script; do
+            echo "Checking $script..."
+            shellcheck "$script" || exit 1
+          done
+          echo "✅ All scripts passed ShellCheck"
+
+      - name: Check script permissions
+        run: |
+          echo "🔍 Checking script execute permissions..."
+          find scripts/ -name "*.sh" | while read script; do
+            if [ ! -x "$script" ]; then
+              echo "❌ Script $script is not executable"
+              exit 1
+            fi
+          done
+          echo "✅ All scripts have execute permissions"
+
+  validate-documentation:
+    runs-on: ubuntu-latest
+    name: Validate Documentation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for broken internal links
+        run: |
+          echo "🔍 Checking for broken internal links in Markdown..."
+          # Check if referenced files exist
+          grep -r "\[.*\](.*.md)" *.md docs/ | grep -v "http" | while read line; do
+            file=$(echo "$line" | sed -n 's/.*(\(.*\.md\)).*/\1/p')
+            if [ ! -f "$file" ]; then
+              echo "❌ Broken link found: $file"
+              exit 1
+            fi
+          done
+          echo "✅ All internal links are valid"
+
+      - name: Check required documentation
+        run: |
+          echo "🔍 Checking for required documentation files..."
+          required_files=(
+            "README.md"
+            "LICENSE"
+            "CONTRIBUTING.md"
+            "CHANGELOG.md"
+            "docs/deployment.md"
+            "docs/configuration.md"
+            "docs/security.md"
+          )
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Required file missing: $file"
+              exit 1
+            fi
+            echo "✅ Found: $file"
+          done
+          echo "✅ All required documentation files present"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scan
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  lint-yaml:
+    runs-on: ubuntu-latest
+    name: Lint YAML Files
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yamllint
+
+      - name: Run yamllint
+        run: |
+          echo "🔍 Running yamllint..."
+          yamllint -d "{extends: relaxed, rules: {line-length: {max: 200}}}" manifests/ || true
+          echo "✅ YAML linting complete"
